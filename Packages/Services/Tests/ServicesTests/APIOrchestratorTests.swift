@@ -96,51 +96,6 @@ struct APIOrchestratorTests {
         #expect(result.confidence == 0)
     }
 
-    @Test("Preserves a completed source result when another source times out")
-    func handlesTimeoutForSlowSources() async {
-        let cache = MockCacheService()
-        await cache.setCachedAPIResult(CachedAPIResult(
-            artist: "Iron Maiden",
-            album: "Brave New World",
-            year: 2000,
-            source: "musicbrainz",
-            timestamp: .now,
-            ttl: 3600,
-            metadata: [
-                "confidence": "80",
-                "rawScore": "80",
-                "isDefinitive": "false",
-            ]
-        ))
-        let slowService = MockAPIService(
-            yearResult: YearResult(
-                year: 2001,
-                confidence: 90,
-                yearScores: [2001: 90]
-            ),
-            delay: .seconds(10)
-        )
-
-        let orchestrator = makeAPIOrchestrator(
-            musicBrainz: MockAPIService(shouldThrow: true),
-            discogs: slowService,
-            appleMusic: MockAPIService(shouldThrow: true),
-            cache: cache
-        ) {
-            $0.timeout = .seconds(1)
-            $0.maxConcurrentSourceCalls = 3
-        }
-
-        let result = await orchestrator.getAlbumYear(
-            artist: "Iron Maiden",
-            album: "Brave New World",
-            currentLibraryYear: nil,
-            earliestTrackAddedYear: nil
-        )
-
-        #expect(result.year == 2000)
-    }
-
     @Test("Limits concurrent source calls")
     func limitsConcurrentSourceCalls() async {
         let probe = APIConcurrencyProbe()
@@ -161,7 +116,6 @@ struct APIOrchestratorTests {
                 delay: .milliseconds(50)
             )
         ) {
-            $0.timeout = .seconds(1)
             $0.maxConcurrentSourceCalls = 1
         }
 
@@ -174,6 +128,29 @@ struct APIOrchestratorTests {
 
         let maxActive = await probe.maxActive()
         #expect(maxActive == 1)
+    }
+
+    @Test("Artist metadata lookups share the source-call limit")
+    func limitsArtistMetadataCalls() async {
+        let probe = APIConcurrencyProbe()
+        let musicBrainz = RecordingAPIService(
+            probe: probe,
+            yearResult: YearResult(),
+            delay: .milliseconds(50)
+        )
+        let orchestrator = makeAPIOrchestrator(
+            musicBrainz: musicBrainz,
+            discogs: MockAPIService(),
+            appleMusic: MockAPIService()
+        ) {
+            $0.maxConcurrentSourceCalls = 1
+        }
+
+        async let activityPeriod = orchestrator.getArtistActivityPeriod(normalizedArtist: "Test")
+        async let region = orchestrator.getArtistRegion(normalizedArtist: "Test")
+        _ = await (activityPeriod, region)
+
+        #expect(await probe.maxActive() == 1)
     }
 
     @Test("Cancelled source calls leave the concurrency probe balanced")
@@ -675,6 +652,18 @@ private struct RecordingAPIService: ExternalAPIService {
     ) async throws -> YearResult {
         try await probe.wait(for: delay)
         return yearResult
+    }
+
+    func getArtistActivityPeriod(
+        normalizedArtist _: String
+    ) async throws -> (start: Int?, end: Int?) {
+        try await probe.wait(for: delay)
+        return (nil, nil)
+    }
+
+    func getArtistRegion(artist _: String) async throws -> String? {
+        try await probe.wait(for: delay)
+        return nil
     }
 
     func initialize(force _: Bool) async throws {

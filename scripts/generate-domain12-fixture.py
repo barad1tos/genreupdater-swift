@@ -38,7 +38,7 @@ class UnitInput:
 class Limits:
     artist: int
     music_app: int
-    provider: int
+    album_workflows: int
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ CONCURRENCY_CASES = (
             "Five independent artist-album units complete out of order under "
             "a limit of two"
         ),
-        limits=Limits(artist=2, music_app=3, provider=4),
+        limits=Limits(artist=2, music_app=3, album_workflows=4),
         units=(
             UnitInput("A", "Björk", "Debut", 80),
             UnitInput("B", "Massive Attack", "Mezzanine", 10),
@@ -68,7 +68,7 @@ CONCURRENCY_CASES = (
     ConcurrencyInput(
         identifier="isolated_failure",
         description="One failed unit does not suppress unrelated metadata proposals",
-        limits=Limits(artist=3, music_app=2, provider=4),
+        limits=Limits(artist=3, music_app=2, album_workflows=4),
         units=(
             UnitInput("F", "Fever Ray", "Fever Ray", 30),
             UnitInput("G", "Goldie", "Timeless", 5, failure_kind="writeEligibility"),
@@ -78,7 +78,7 @@ CONCURRENCY_CASES = (
     ConcurrencyInput(
         identifier="unclassified_failure",
         description="An unclassified unit failure remains visible instead of saving a partial plan",
-        limits=Limits(artist=3, music_app=2, provider=4),
+        limits=Limits(artist=3, music_app=2, album_workflows=4),
         units=(
             UnitInput("I", "Iamamiwhoami", "Kin", 30),
             UnitInput("J", "Jessie Ware", "Devotion", 5, failure_kind="unclassified"),
@@ -331,7 +331,7 @@ async def execute_case(
     current_configuration.genre_update.concurrent_limit = replay_case.limits.artist
     current_configuration.apple_script_concurrency = replay_case.limits.music_app
     current_configuration.year_retrieval.rate_limits.concurrent_api_calls = (
-        replay_case.limits.provider
+        replay_case.limits.album_workflows
     )
     track_factory = cast(
         TrackFactory,
@@ -372,7 +372,7 @@ async def execute_case(
     swift_maximum_active = min(
         replay_case.limits.artist,
         replay_case.limits.music_app,
-        replay_case.limits.provider,
+        replay_case.limits.album_workflows,
     )
     divergences: list[dict[str, str]] = []
     if probe.maximum_active != swift_maximum_active:
@@ -383,7 +383,7 @@ async def execute_case(
                 "swiftValue": str(swift_maximum_active),
                 "reason": (
                     "Swift plan units cover genre and year determination, so admission "
-                    "uses the tightest configured artist, Music.app, and provider limit."
+                    "uses the tightest configured artist, Music.app, and album-workflow limit."
                 ),
             }
         )
@@ -410,7 +410,7 @@ async def execute_case(
             "limits": {
                 "artist": replay_case.limits.artist,
                 "musicApp": replay_case.limits.music_app,
-                "provider": replay_case.limits.provider,
+                "albumWorkflows": replay_case.limits.album_workflows,
             },
             "units": [
                 {

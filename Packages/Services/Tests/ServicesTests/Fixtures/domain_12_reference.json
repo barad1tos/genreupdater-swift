@@ -20,7 +20,7 @@
         "limits": {
           "artist": 2,
           "musicApp": 3,
-          "provider": 4
+          "albumWorkflows": 4
         },
         "units": [
           {
@@ -68,7 +68,7 @@
         {
           "field": "maximumActive",
           "pythonValue": "3",
-          "reason": "Swift plan units cover genre and year determination, so admission uses the tightest configured artist, Music.app, and provider limit.",
+          "reason": "Swift plan units cover genre and year determination, so admission uses the tightest configured artist, Music.app, and album-workflow limit.",
           "swiftValue": "2"
         }
       ],
@@ -86,7 +86,7 @@
         "limits": {
           "artist": 3,
           "musicApp": 2,
-          "provider": 4
+          "albumWorkflows": 4
         },
         "units": [
           {
@@ -120,7 +120,7 @@
         {
           "field": "maximumActive",
           "pythonValue": "3",
-          "reason": "Swift plan units cover genre and year determination, so admission uses the tightest configured artist, Music.app, and provider limit.",
+          "reason": "Swift plan units cover genre and year determination, so admission uses the tightest configured artist, Music.app, and album-workflow limit.",
           "swiftValue": "2"
         },
         {
@@ -144,7 +144,7 @@
         "limits": {
           "artist": 3,
           "musicApp": 2,
-          "provider": 4
+          "albumWorkflows": 4
         },
         "units": [
           {

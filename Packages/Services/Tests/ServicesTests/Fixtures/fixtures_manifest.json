@@ -4,7 +4,7 @@
   "requiresGeneratedInput": true,
   "files": {
     "domain_12_reference.json": {
-      "digest": "sha256:a52e0389eda6c23374f928c3051c63bf55f863d677c947ded0b8cabaa064e2f1",
+      "digest": "sha256:c880f6dbb4769879c891503c833318b7729d815e23d046404e807235b52f65f5",
       "caseCount": 9,
       "generated": 9,
       "verifiedByExecution": 0

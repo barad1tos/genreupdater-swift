@@ -70,7 +70,6 @@ struct ProviderAdmissionCacheTests {
             disabledSources: [.discogs, .itunes]
         ) {
             $0.maxConcurrentSourceCalls = 1
-            $0.timeout = .seconds(2)
             $0.providerAdmissionHooks = hooks
         }
         return AdmissionCacheFixture(orchestrator: orchestrator, probe: probe)

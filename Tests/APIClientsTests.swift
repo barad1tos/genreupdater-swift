@@ -228,9 +228,11 @@ struct APIClientsTests {
         configuration.yearRetrieval.apiAuth.discogsTokenReference = "configured-token"
         configuration.yearRetrieval.discogsSearch.resultLimit = 17
         configuration.yearRetrieval.discogsSearch.detailLookupLimit = 1
+        configuration.yearRetrieval.requestTimeoutSeconds = 22.5
         let requestProbe = DiscogsRequestProbe()
         CapturedAuthURLProtocol.requestHandler = { request in
-            try makeDiscogsLimitResponse(for: request, probe: requestProbe)
+            #expect(request.timeoutInterval == 22.5)
+            return try makeDiscogsLimitResponse(for: request, probe: requestProbe)
         }
         defer { CapturedAuthURLProtocol.requestHandler = nil }
         let sessionConfiguration = URLSessionConfiguration.ephemeral

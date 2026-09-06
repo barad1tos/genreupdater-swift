@@ -43,6 +43,7 @@ public struct DiscogsClient: ExternalAPIService, Sendable {
     private var searchConfiguration: DiscogsSearchConfig
     private let baseURL: URL
     private var analytics: (any AnalyticsService)?
+    private var requestPolicy = ProviderRequestPolicy()
     private let log = AppLogger.api
 
     public var isConfigured: Bool {
@@ -230,7 +231,7 @@ public struct DiscogsClient: ExternalAPIService, Sendable {
     ///
     /// Sets `Authorization: Discogs token={PAT}`, `User-Agent`, and `Accept`.
     func makeRequest(for url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
+        var request = requestPolicy.request(for: url)
         if let token {
             request.setValue(
                 "Discogs token=\(token)",
@@ -330,7 +331,10 @@ public struct DiscogsClient: ExternalAPIService, Sendable {
         )
     }
 
-    private static func rethrowTerminal(_ error: any Error) throws {
+    static func rethrowTerminal(_ error: any Error) throws {
+        if error is ProviderRequestTimeout {
+            throw error
+        }
         if error is CancellationError {
             throw error
         }
@@ -671,6 +675,13 @@ public struct DiscogsClient: ExternalAPIService, Sendable {
         return copy
     }
 
+    /// Returns a copy whose individual Discogs requests use the supplied timeout.
+    public func withRequestTimeout(seconds: TimeInterval) -> Self {
+        var copy = self
+        copy.requestPolicy = ProviderRequestPolicy(timeoutSeconds: seconds)
+        return copy
+    }
+
     private func fetchWithRateLimit(url: URL, operation: AnalyticsOperation) async throws -> Data {
         let data: Data = if let rawRequestCache {
             try await rawRequestCache.data(api: "discogs", url: url) {
@@ -685,21 +696,25 @@ public struct DiscogsClient: ExternalAPIService, Sendable {
 
     private func measuredFetch(url: URL, operation: AnalyticsOperation) async throws -> Data {
         guard let analytics else {
-            return try await performRateLimitedFetch(url: url)
+            return try await performRateLimitedFetch(url: url, operation: operation)
         }
         return try await analytics.measure(operation) {
-            try await performRateLimitedFetch(url: url)
+            try await performRateLimitedFetch(url: url, operation: operation)
         }
     }
 
-    private func performRateLimitedFetch(url: URL) async throws -> Data {
+    private func performRateLimitedFetch(url: URL, operation: AnalyticsOperation) async throws -> Data {
         let waitTime = try await rateLimiter.acquireCancellable()
         if waitTime > .zero {
             log.debug("Discogs rate limited, waited \(waitTime, privacy: .public)")
         }
 
         let request = makeRequest(for: url)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await requestPolicy.performClientRequest(
+            operation: ProviderRequestOperation(operation)
+        ) {
+            try await session.data(for: request)
+        }
         try Task.checkCancellation()
 
         guard let httpResponse = response as? HTTPURLResponse else {

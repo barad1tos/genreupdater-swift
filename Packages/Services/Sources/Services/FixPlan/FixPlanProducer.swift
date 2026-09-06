@@ -228,7 +228,7 @@ public struct FixPlanProducer: Sendable {
             limit = min(limit, appConfiguration.genreUpdate.concurrentLimit)
         }
         if configuration.updateYear {
-            limit = min(limit, appConfiguration.yearRetrieval.rateLimits.concurrentAPICalls)
+            limit = min(limit, appConfiguration.yearRetrieval.rateLimits.concurrentAlbums)
         }
         return limit
     }

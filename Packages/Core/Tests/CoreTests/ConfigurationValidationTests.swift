@@ -32,9 +32,7 @@ struct ConfigurationValidationTests {
             " oldartist  ": " New Artist ",
             "OldArtist": "New Artist",
         ]
-
         let decoded = try decode(configuration)
-
         #expect(decoded.artistRenamer.mappings.count == 2)
     }
 
@@ -206,8 +204,9 @@ struct ConfigurationValidationTests {
         configuration.yearRetrieval.rateLimits.discogsRequestsPerMinute = 1
         configuration.yearRetrieval.rateLimits.musicbrainzRequestsPerSecond = 0.1
         configuration.yearRetrieval.rateLimits.itunesRequestsPerSecond = 0.1
-        configuration.yearRetrieval.providerTimeoutSeconds = 1
-        configuration.yearRetrieval.rateLimits.concurrentAPICalls = 1
+        configuration.yearRetrieval.requestTimeoutSeconds = 1
+        configuration.yearRetrieval.rateLimits.concurrentAlbums = 1
+        configuration.yearRetrieval.rateLimits.concurrentProviderCalls = 1
         configuration.yearRetrieval.logic.minValidYear = 3000
         configuration.yearRetrieval.logic.absurdYearThreshold = 1000
         configuration.yearRetrieval.logic.suspicionThresholdYears = 0
@@ -576,8 +575,11 @@ struct ConfigurationValidationTests {
             pacingCapacity("yearRetrieval.rateLimits.musicbrainzRequestsPerSecond", "1e-308") {
                 $0.yearRetrieval.rateLimits.musicbrainzRequestsPerSecond = 1e-308
             },
-            minimumOne("yearRetrieval.rateLimits.concurrentAPICalls", "0") {
-                $0.yearRetrieval.rateLimits.concurrentAPICalls = 0
+            minimumOne("yearRetrieval.rateLimits.concurrentAlbums", "0") {
+                $0.yearRetrieval.rateLimits.concurrentAlbums = 0
+            },
+            minimumOne("yearRetrieval.rateLimits.concurrentProviderCalls", "0") {
+                $0.yearRetrieval.rateLimits.concurrentProviderCalls = 0
             },
             minimumThousand("yearRetrieval.logic.minValidYear", "999") {
                 $0.yearRetrieval.logic.minValidYear = 999

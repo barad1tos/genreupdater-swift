@@ -1,7 +1,5 @@
 import Foundation
 
-struct ProviderCallTimeout: Error {}
-
 actor ProviderAdmission {
     #if DEBUG
     typealias TestHooks = (
@@ -34,24 +32,16 @@ actor ProviderAdmission {
     #endif
 
     func execute<Value: Sendable>(
-        timeout: Duration,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        let operationTask: Task<Value, any Error> = Task {
-            try await acquire()
-            do {
-                let value = try await operation()
-                release()
-                return value
-            } catch {
-                release()
-                throw error
-            }
+        try await acquire()
+        let permitLease = ProviderPermitLease {
+            Task { await self.release() }
         }
-        return try await ProviderCallRace.value(
-            of: operationTask,
-            timeout: timeout
-        )
+        defer { finish(permitLease) }
+        return try await ProviderPermitScope.$current.withValue(permitLease) {
+            try await operation()
+        }
     }
 
     private func acquire() async throws {
@@ -95,6 +85,12 @@ actor ProviderAdmission {
         resumeWaiters()
     }
 
+    private func finish(_ permitLease: ProviderPermitLease) {
+        if permitLease.finishCall() {
+            release()
+        }
+    }
+
     private func resumeWaiters() {
         while activeCalls < limit, !waiters.isEmpty {
             activeCalls += 1
@@ -108,108 +104,72 @@ actor ProviderAdmission {
     }
 }
 
-// Safety: the lock serializes the one-shot continuation and timeout state.
-private final class ProviderCallRace<Value: Sendable>: @unchecked Sendable {
+enum ProviderPermitScope {
+    @TaskLocal static var current: ProviderPermitLease?
+}
+
+enum ProviderPermitLeaseError: Error, Equatable, Sendable {
+    case callFinished
+}
+
+/// Connects physical provider requests to one admitted logical call through task-local scope.
+/// A logical return or deadline keeps the permit occupied until every registered request closure finishes.
+///
+/// Safety: the lock protects the call/request lifetime counters and one-shot release state.
+final class ProviderPermitLease: @unchecked Sendable {
+    private enum State {
+        case acceptingRequests
+        case awaitingRequests
+        case released
+    }
+
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<Value, any Error>?
-    private var pendingResult: Result<Value, any Error>?
-    private var timeoutTask: Task<Void, Never>?
-    private var isResolved = false
+    private let deferredRelease: @Sendable () -> Void
+    private var activeRequests = 0
+    private var state = State.acceptingRequests
 
-    static func value(
-        of operationTask: Task<Value, any Error>,
-        timeout: Duration
-    ) async throws -> Value {
-        let race = ProviderCallRace()
-        return try await withTaskCancellationHandler {
-            try await race.waitForResolution(of: operationTask, timeout: timeout)
-        } onCancel: {
-            race.resolve(
-                .failure(CancellationError()),
-                cancelling: operationTask
-            )
-        }
+    init(deferredRelease: @escaping @Sendable () -> Void) {
+        self.deferredRelease = deferredRelease
     }
 
-    private func waitForResolution(
-        of operationTask: Task<Value, any Error>,
-        timeout: Duration
-    ) async throws -> Value {
-        try await withCheckedThrowingContinuation { continuation in
-            installContinuation(continuation)
-            observeCompletion(of: operationTask)
-            installTimeout(makeTimeoutTask(after: timeout, cancelling: operationTask))
-        }
-    }
-
-    private func observeCompletion(of operationTask: Task<Value, any Error>) {
-        Task {
-            await resolve(operationTask.result)
-        }
-    }
-
-    private func makeTimeoutTask(
-        after timeout: Duration,
-        cancelling operationTask: Task<Value, any Error>
-    ) -> Task<Void, Never> {
-        Task {
-            do {
-                try await Task.sleep(for: timeout)
-            } catch {
-                return
+    func beginRequest() throws -> @Sendable () -> Void {
+        try lock.withLock {
+            guard state == .acceptingRequests else {
+                throw ProviderPermitLeaseError.callFinished
             }
-            resolve(
-                .failure(ProviderCallTimeout()),
-                cancelling: operationTask
-            )
+            activeRequests += 1
         }
+        return { self.finishRequest() }
     }
 
-    private func installContinuation(
-        _ continuation: CheckedContinuation<Value, any Error>
-    ) {
-        let pendingResult = lock.withLock { () -> Result<Value, any Error>? in
-            guard !isResolved else {
-                let result = self.pendingResult
-                self.pendingResult = nil
-                return result
+    func finishCall() -> Bool {
+        lock.withLock {
+            guard state == .acceptingRequests else {
+                assertionFailure("Provider call finished more than once")
+                return false
             }
-            self.continuation = continuation
-            return nil
-        }
-        if let pendingResult {
-            continuation.resume(with: pendingResult)
-        }
-    }
-
-    private func installTimeout(_ task: Task<Void, Never>) {
-        let shouldCancel = lock.withLock {
-            guard !isResolved else { return true }
-            timeoutTask = task
+            if activeRequests == 0 {
+                state = .released
+                return true
+            }
+            state = .awaitingRequests
             return false
         }
-        if shouldCancel {
-            task.cancel()
-        }
     }
 
-    private func resolve(
-        _ result: Result<Value, any Error>,
-        cancelling operationTask: Task<Value, any Error>? = nil
-    ) {
-        let resolution = lock.withLock {
-            guard !isResolved else { return nil as (CheckedContinuation<Value, any Error>?, Task<Void, Never>?)? }
-            isResolved = true
-            pendingResult = continuation == nil ? result : nil
-            let resolution = (continuation, timeoutTask)
-            continuation = nil
-            timeoutTask = nil
-            return resolution
+    private func finishRequest() {
+        let shouldRelease = lock.withLock {
+            guard activeRequests > 0 else {
+                assertionFailure("Provider request count underflow")
+                return false
+            }
+            activeRequests -= 1
+            guard activeRequests == 0, state == .awaitingRequests else { return false }
+            state = .released
+            return true
         }
-        guard let resolution else { return }
-
-        operationTask?.cancel()
-        resolution.1?.cancel()
-        resolution.0?.resume(with: result)
+        if shouldRelease {
+            deferredRelease()
+        }
     }
 }

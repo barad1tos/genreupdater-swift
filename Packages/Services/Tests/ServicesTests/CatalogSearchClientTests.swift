@@ -21,6 +21,22 @@ private enum ITunesPath {
     }
 }
 
+private actor RequestHold {
+    private var isReleased = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !isReleased else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func release() {
+        isReleased = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 // MARK: - CatalogSearchClientTests
 
 @Suite("CatalogSearchClient — Apple Music catalog search via MusicKit", .serialized)
@@ -94,6 +110,91 @@ struct CatalogSearchClientTests {
                 earliestTrackAddedYear: nil
             )
         }
+    }
+
+    @Test("Request timeout rejects values outside the configured capacity")
+    func rejectsUnrepresentableRequestTimeout() {
+        let policy = ProviderRequestPolicy(timeoutSeconds: 1e308)
+
+        #expect(policy.timeoutSeconds == YearRetrievalConfig.defaultRequestTimeoutSeconds)
+    }
+
+    @Test("Request timeout preserves representable values beyond the UI range")
+    func preservesRepresentableRequestTimeout() {
+        let policy = ProviderRequestPolicy(timeoutSeconds: 300)
+
+        #expect(policy.timeoutSeconds == 300)
+    }
+
+    @Test("Cancelled lookup does not start a catalog request")
+    func cancelledLookupDoesNotStartRequest() async {
+        let requestStarted = EventCounter()
+        let startGate = RequestHold()
+        let client = CatalogSearchClient(
+            dateProvider: { Date() },
+            authorizeMusic: { .authorized },
+            findReleaseDate: { _ in
+                requestStarted.record()
+                return nil
+            }
+        )
+
+        let lookup = Task {
+            await startGate.wait()
+            return try await client.getAlbumYear(
+                artist: "Test Artist",
+                album: "Test Album",
+                currentLibraryYear: nil,
+                earliestTrackAddedYear: nil
+            )
+        }
+        lookup.cancel()
+        await startGate.release()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await lookup.value
+        }
+        #expect(await !requestStarted.wait(for: 1, timeout: .milliseconds(50)))
+    }
+
+    @Test("Album year lookup returns at its deadline when MusicKit ignores cancellation")
+    func timesOutNonCooperativeMusicKitRequest() async {
+        let requestStarted = EventCounter()
+        let requestFinished = EventCounter()
+        let requestHold = RequestHold()
+        let client = CatalogSearchClient(
+            dateProvider: { Date() },
+            authorizeMusic: { .authorized },
+            findReleaseDate: { _ in
+                requestStarted.record()
+                await requestHold.wait()
+                requestFinished.record()
+                return nil
+            }
+        ).withRequestTimeout(seconds: 0.01)
+
+        let lookup = Task {
+            try await client.getAlbumYear(
+                artist: "Test Artist",
+                album: "Test Album",
+                currentLibraryYear: nil,
+                earliestTrackAddedYear: nil
+            )
+        }
+        #expect(await requestStarted.wait(for: 1))
+
+        do {
+            _ = try await taskValue(lookup, timeout: .milliseconds(200))
+            Issue.record("Expected MusicKit request timeout")
+        } catch let error as ProviderRequestTimeout {
+            #expect(error.operation == .appleMusicCatalogSearch)
+            #expect(error.timeoutSeconds == 0.01)
+        } catch {
+            Issue.record("Expected ProviderRequestTimeout, got \(error)")
+        }
+
+        await requestHold.release()
+        #expect(await requestFinished.wait(for: 1))
     }
 
     @Test("Album year lookup keeps an empty catalog response as a confirmed miss")
@@ -331,7 +432,7 @@ struct CatalogSearchClientTests {
         #expect(result.yearScores == [currentYear: 50])
     }
 
-    @Test("iTunes network requests wait for admission")
+    @Test("iTunes request begins only after rate-limit admission")
     func requestsWaitForAdmission() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ITunesMockURLProtocol.self]
@@ -360,7 +461,7 @@ struct CatalogSearchClientTests {
             settings: settings,
             rateLimiter: limiter,
             session: session
-        )
+        ).withRequestTimeout(seconds: 1)
 
         let lookup = Task {
             try await client.getReleaseCandidates(
@@ -507,6 +608,38 @@ struct CatalogSearchClientTests {
         } catch {
             #expect(error.localizedDescription == "iTunes request returned HTTP 500")
         }
+    }
+
+    @Test("iTunes requests carry the configured request timeout")
+    func releaseCandidatesUseConfiguredRequestTimeout() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ITunesMockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            ITunesMockURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        ITunesMockURLProtocol.requestHandler = { request in
+            #expect(request.timeoutInterval == 22.5)
+            let url = try #require(request.url)
+            let response = try #require(HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            ))
+            return (response, Data(#"{"resultCount":0,"results":[]}"#.utf8))
+        }
+
+        let client = CatalogSearchClient(session: session, lookupFallbackEnabled: false)
+            .withRequestTimeout(seconds: 22.5)
+        _ = try await client.getReleaseCandidates(
+            artist: "Test Artist",
+            album: "Test Album",
+            currentLibraryYear: nil,
+            earliestTrackAddedYear: nil
+        )
     }
 
     @Test("getReleaseCandidates uses iTunes lookup fallback when search is empty")

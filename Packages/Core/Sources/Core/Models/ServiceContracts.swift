@@ -205,6 +205,15 @@ extension TrackStateStore {
 }
 
 /// Protocol for external music metadata API clients.
+///
+/// Implementations must bound every external request and throw when that request
+/// reaches its deadline. External conformers must not return until the underlying
+/// transport has physically completed or is guaranteed cancelled. GenreUpdater's
+/// built-in clients invoked through `APIOrchestrator` may return a deadline error
+/// while a non-cooperative transport finishes because they register that work with
+/// the orchestrator's capacity lease.
+/// Orchestration intentionally does not impose a separate queue or whole-service
+/// timeout because those budgets would hide physical work.
 public protocol ExternalAPIService: Sendable {
     func getAlbumYear(
         artist: String,

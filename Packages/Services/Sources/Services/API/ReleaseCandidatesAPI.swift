@@ -84,8 +84,7 @@ extension APIOrchestrator {
             artist: searchQuery.artist,
             album: searchQuery.album,
             currentLibraryYear: currentLibraryYear,
-            earliestTrackAddedYear: earliestTrackAddedYear,
-            timeout: timeout
+            earliestTrackAddedYear: earliestTrackAddedYear
         )
         let sourceRank = Dictionary(uniqueKeysWithValues: activeSources.enumerated().map { ($0.element, $0.offset) })
         let apiRetryConfiguration = apiRetryConfiguration
@@ -152,7 +151,7 @@ private func cachedOrFetchedReleaseCandidates(
         )
     }
 
-    let outcome = await fetchReleaseCandidatesWithTimeout(
+    let outcome = await fetchProviderCandidates(
         sourceEntry: sourceEntry,
         query: query,
         apiRetryConfiguration: apiRetryConfiguration,
@@ -173,7 +172,7 @@ private func cachedOrFetchedReleaseCandidates(
     )
 }
 
-private func fetchReleaseCandidatesWithTimeout(
+private func fetchProviderCandidates(
     sourceEntry: (source: APISource, service: any ExternalAPIService),
     query: ReleaseCandidateQuery,
     apiRetryConfiguration: APIRetryConfiguration,
@@ -181,7 +180,7 @@ private func fetchReleaseCandidatesWithTimeout(
 ) async -> ReleaseCandidateFetchOutcome {
     let log = AppLogger.api
     do {
-        let candidates = try await providerAdmission.execute(timeout: query.timeout) {
+        let candidates = try await providerAdmission.execute {
             try await fetchReleaseCandidatesWithRetry(
                 sourceEntry: sourceEntry,
                 query: query,
@@ -189,12 +188,6 @@ private func fetchReleaseCandidatesWithTimeout(
             )
         }
         return ReleaseCandidateFetchOutcome(candidates: candidates, shouldCacheEmptyResult: true)
-    } catch is ProviderCallTimeout {
-        log
-            .warning(
-                "\(sourceEntry.source.rawValue, privacy: .public) candidate fetch timed out after \(query.timeout, privacy: .public)"
-            )
-        return ReleaseCandidateFetchOutcome(candidates: [], shouldCacheEmptyResult: false)
     } catch is CancellationError {
         log.debug("\(sourceEntry.source.rawValue, privacy: .public) candidate fetch cancelled")
         return ReleaseCandidateFetchOutcome(candidates: [], shouldCacheEmptyResult: false)
@@ -369,7 +362,6 @@ private struct ReleaseCandidateQuery {
     let album: String
     let currentLibraryYear: Int?
     let earliestTrackAddedYear: Int?
-    let timeout: Duration
 }
 
 private struct ReleaseCandidateCacheContext {

@@ -13,7 +13,6 @@ struct ProviderAdmissionRetryTests {
         let probe = AdmissionRetryProbe()
         let orchestrator = retryOrchestrator(
             service: AdmissionRetryService(probe: probe),
-            timeout: .seconds(2),
             retryDelaySeconds: 0.2
         )
         let retrying = providerLookup(orchestrator, lookup: lookup, artist: "Retry")
@@ -27,40 +26,62 @@ struct ProviderAdmissionRetryTests {
         #expect(await probe.events == ["retry-1", "retry-2", "competitor"])
     }
 
-    @Test(
-        "Retry attempts share one caller timeout",
-        arguments: ProviderLookup.allCases
-    )
-    func retryChainUsesOneTimeout(_ lookup: ProviderLookup) async {
-        let orchestrator = retryOrchestrator(
-            service: TimedRetryService(),
-            timeout: .milliseconds(80),
-            retryDelaySeconds: 0
-        )
+    @Test("Hard timeout does not overlap a retry with unfinished transport")
+    func hardTimeoutDoesNotOverlapRetry() async {
+        let admission = ProviderAdmission(limit: 1)
+        let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 0.01)
+        let requestStarted = EventCounter()
+        let requestGate = AdmissionRetryGate()
 
-        switch lookup {
-        case .candidates:
-            let candidates = await orchestrator.getReleaseCandidates(
-                artist: "Retry",
-                album: "Album",
-                currentLibraryYear: nil,
-                earliestTrackAddedYear: nil
-            )
-            #expect(candidates.isEmpty)
-        case .albumYear:
-            let result = await orchestrator.getAlbumYear(
-                artist: "Retry",
-                album: "Album",
-                currentLibraryYear: nil,
-                earliestTrackAddedYear: nil
-            )
-            #expect(result.year == nil)
+        let request: @Sendable () async throws -> Void = {
+            try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
+                requestStarted.record()
+                await requestGate.wait()
+            }
         }
+        let retry: @Sendable () async throws -> Void = {
+            try await withRetry(maxAttempts: 2, initialDelay: .zero, operation: request)
+        }
+        let lookup = Task {
+            try await admission.execute(operation: retry)
+        }
+
+        #expect(await requestStarted.wait(for: 1, timeout: .seconds(1)))
+        do {
+            _ = try await taskValue(lookup, timeout: .seconds(1))
+            Issue.record("Expected the provider request deadline")
+        } catch let error as ProviderRequestTimeout {
+            #expect(error.operation == .appleMusicCatalogSearch)
+            #expect(error.timeoutSeconds == 0.01)
+            #expect(error.localizedDescription == "applemusic.catalog_search timed out after 0.01 seconds")
+        } catch {
+            Issue.record("Expected ProviderRequestTimeout, got \(error)")
+        }
+        #expect(await !requestStarted.wait(for: 2, timeout: .milliseconds(50)))
+        await requestGate.open()
+    }
+
+    @Test("Completed transport timeout remains retryable")
+    func completedTransportTimeoutRetries() async throws {
+        let admission = ProviderAdmission(limit: 1)
+        let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 1)
+        let attempts = TransportTimeoutAttempts()
+
+        let request: @Sendable () async throws -> Int = {
+            try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
+                try await attempts.nextResult()
+            }
+        }
+        let result = try await admission.execute {
+            try await withRetry(maxAttempts: 2, initialDelay: .zero, operation: request)
+        }
+
+        #expect(result == 2)
+        #expect(await attempts.count == 2)
     }
 
     private func retryOrchestrator(
         service: any ExternalAPIService,
-        timeout: Duration,
         retryDelaySeconds: Double
     ) -> APIOrchestrator {
         makeAPIOrchestrator(
@@ -70,7 +91,6 @@ struct ProviderAdmissionRetryTests {
             disabledSources: [.discogs, .itunes]
         ) {
             $0.maxConcurrentSourceCalls = 1
-            $0.timeout = timeout
             $0.maxAPIRetries = 1
             $0.apiRetryDelaySeconds = retryDelaySeconds
         }
@@ -106,6 +126,44 @@ struct ProviderAdmissionRetryTests {
             _ = try await taskValue(task, timeout: .seconds(2))
         }
     }
+}
+
+private actor TransportTimeoutAttempts {
+    private(set) var count = 0
+
+    func nextResult() throws -> Int {
+        count += 1
+        if count == 1 {
+            throw URLError(.timedOut)
+        }
+        return count
+    }
+}
+
+private actor AdmissionRetryGate {
+    private var isOpen = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
+    }
+}
+
+enum ProviderLookup: CaseIterable, Sendable {
+    case candidates
+    case albumYear
 }
 
 private actor AdmissionRetryProbe {
@@ -200,57 +258,5 @@ private struct AdmissionRetryService: ExternalAPIService {
 
     func initialize(force _: Bool) async throws {
         try Task.checkCancellation()
-    }
-}
-
-private actor TimedRetryCounter {
-    private var attempt = 0
-
-    func next() -> Int {
-        attempt += 1
-        return attempt
-    }
-}
-
-private struct TimedRetryService: ExternalAPIService {
-    private let counter = TimedRetryCounter()
-
-    func getAlbumYear(
-        artist _: String,
-        album _: String,
-        currentLibraryYear _: Int?,
-        earliestTrackAddedYear _: Int?
-    ) async throws -> YearResult {
-        try await attempt()
-        return YearResult(year: 1991, confidence: 90, yearScores: [1991: 90])
-    }
-
-    func getReleaseCandidates(
-        artist: String,
-        album: String,
-        currentLibraryYear _: Int?,
-        earliestTrackAddedYear _: Int?
-    ) async throws -> [ReleaseCandidate] {
-        try await attempt()
-        return [
-            ReleaseCandidate(
-                artist: artist,
-                album: album,
-                year: 1991,
-                source: .musicBrainz
-            ),
-        ]
-    }
-
-    func initialize(force _: Bool) async throws {
-        try Task.checkCancellation()
-    }
-
-    private func attempt() async throws {
-        let attempt = await counter.next()
-        try await Task.sleep(for: .milliseconds(50))
-        if attempt == 1 {
-            throw URLError(.timedOut)
-        }
     }
 }

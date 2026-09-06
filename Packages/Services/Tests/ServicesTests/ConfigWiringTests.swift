@@ -202,8 +202,8 @@ struct ConfigWiringTests {
     func apiOrchestratorConfigMapsYearRetrievalAndRuntimeSettings() {
         var configuration = AppConfiguration()
         configuration.caching.negativeResultTTL = 12345
-        configuration.yearRetrieval.rateLimits.concurrentAPICalls = 7
-        configuration.yearRetrieval.providerTimeoutSeconds = 22.5
+        configuration.yearRetrieval.rateLimits.concurrentAlbums = 4
+        configuration.yearRetrieval.rateLimits.concurrentProviderCalls = 7
         configuration.runtime.maxRetries = 4
         configuration.runtime.retryDelaySeconds = 2.5
         configuration.processing.cacheTTLDays = 3
@@ -217,7 +217,6 @@ struct ConfigWiringTests {
         #expect(orchestrator.negativeResultTTL == 12345)
         #expect(orchestrator.candidateResultTTL == TimeInterval(3 * 24 * 60 * 60))
         #expect(orchestrator.maxConcurrentSourceCalls == 7)
-        #expect(orchestrator.timeout == .milliseconds(22500))
         #expect(orchestrator.maxAPIRetries == 4)
         #expect(orchestrator.apiRetryDelaySeconds == 2.5)
         #expect(orchestrator.discogsReissueKeywords == ["anniversary"])

@@ -85,7 +85,6 @@ public struct APIOrchestratorConfiguration: Sendable {
     public var reachability: NetworkReachabilityMonitor?
     public var cache: (any CacheService)?
     public var analytics: (any AnalyticsService)?
-    public var timeout: Duration
     public var negativeResultTTL: TimeInterval
     public var candidateResultTTL: TimeInterval?
     public var disabledSources: Set<APISource>
@@ -107,12 +106,11 @@ public struct APIOrchestratorConfiguration: Sendable {
         reachability = nil
         cache = nil
         analytics = nil
-        timeout = .seconds(YearRetrievalConfig.defaultProviderTimeoutSeconds)
         negativeResultTTL = CachingConfig().negativeResultTTL
         candidateResultTTL = nil
         dateProvider = { Date() }
         disabledSources = []
-        maxConcurrentSourceCalls = 3
+        maxConcurrentSourceCalls = APIRateLimits.defaultConcurrentProviderCalls
         maxAPIRetries = 0
         apiRetryDelaySeconds = 1
         sourcePriorityConfiguration = APISourcePriorityConfiguration()
@@ -134,8 +132,7 @@ public struct APIOrchestratorConfiguration: Sendable {
         self.init()
         negativeResultTTL = configuration.caching.negativeResultTTL
         candidateResultTTL = GRDBCacheService.resolvedAPIResultTTL(configuration: configuration)
-        timeout = .seconds(configuration.yearRetrieval.providerTimeoutSeconds)
-        maxConcurrentSourceCalls = configuration.yearRetrieval.rateLimits.concurrentAPICalls
+        maxConcurrentSourceCalls = configuration.yearRetrieval.rateLimits.concurrentProviderCalls
         maxAPIRetries = configuration.runtime.maxRetries
         apiRetryDelaySeconds = configuration.runtime.retryDelaySeconds
         sourcePriorityConfiguration = APISourcePriorityConfiguration(configuration: configuration)
@@ -186,7 +183,6 @@ public actor APIOrchestrator {
     let reachability: NetworkReachabilityMonitor?
     let cache: (any CacheService)?
     let analytics: (any AnalyticsService)?
-    let timeout: Duration
     let negativeResultTTL: TimeInterval
     let candidateResultTTL: TimeInterval?
     nonisolated public let disabledSources: Set<APISource>
@@ -201,7 +197,7 @@ public actor APIOrchestrator {
     let dateProvider: @Sendable () -> Date
     private let log = AppLogger.api
 
-    /// Creates an orchestrator with three API sources and a per-source timeout.
+    /// Creates an orchestrator with three API sources and one shared provider-capacity budget.
     ///
     /// - Parameters:
     ///   - services: Music metadata API clients.
@@ -216,7 +212,6 @@ public actor APIOrchestrator {
         reachability = configuration.reachability
         cache = configuration.cache
         analytics = configuration.analytics
-        timeout = configuration.timeout
         negativeResultTTL = max(0, configuration.negativeResultTTL)
         candidateResultTTL = configuration.candidateResultTTL.flatMap { $0 > 0 ? $0 : nil }
         disabledSources = configuration.disabledSources
@@ -258,20 +253,18 @@ public actor APIOrchestrator {
         )
     }
 
-    /// Creates an orchestrator with common runtime overrides kept source-compatible with older call sites.
+    /// Creates an orchestrator with common runtime overrides.
     public init(
         musicBrainz: any ExternalAPIService,
         discogs: any ExternalAPIService,
         appleMusic: any ExternalAPIService,
         reachability: NetworkReachabilityMonitor? = nil,
         cache: (any CacheService)? = nil,
-        timeout: Duration = .seconds(YearRetrievalConfig.defaultProviderTimeoutSeconds),
         disabledSources: Set<APISource> = []
     ) {
         var configuration = APIOrchestratorConfiguration()
         configuration.reachability = reachability
         configuration.cache = cache
-        configuration.timeout = timeout
         configuration.disabledSources = disabledSources
         self.init(
             musicBrainz: musicBrainz,
@@ -319,8 +312,7 @@ public actor APIOrchestrator {
             artist: searchQuery.artist,
             album: searchQuery.album,
             currentLibraryYear: currentLibraryYear,
-            earliestTrackAddedYear: earliestTrackAddedYear,
-            timeout: timeout
+            earliestTrackAddedYear: earliestTrackAddedYear
         )
 
         let results = await fetchSourceResults(sources: sources, query: query)
@@ -482,7 +474,7 @@ public actor APIOrchestrator {
             return SourceFetchResult(source: source, result: cached, didCompleteLookup: true)
         }
 
-        let outcome = await fetchWithTimeout(
+        let outcome = await fetchSource(
             sourceEntry: sourceEntry,
             query: query,
             apiRetryConfiguration: apiRetryConfiguration,
@@ -602,7 +594,7 @@ public actor APIOrchestrator {
     }
 }
 
-private func fetchWithTimeout(
+private func fetchSource(
     sourceEntry: (source: APISource, service: any ExternalAPIService),
     query: SourceQuery,
     apiRetryConfiguration: APIRetryConfiguration,
@@ -610,7 +602,7 @@ private func fetchWithTimeout(
 ) async -> SourceServiceOutcome {
     let log = AppLogger.api
     do {
-        let result = try await providerAdmission.execute(timeout: query.timeout) {
+        let result = try await providerAdmission.execute {
             try await fetchAlbumYearWithRetry(
                 sourceEntry: sourceEntry,
                 query: query,
@@ -621,16 +613,6 @@ private func fetchWithTimeout(
             result: result,
             shouldCacheEmptyResult: result.year == nil,
             didCompleteLookup: true
-        )
-    } catch is ProviderCallTimeout {
-        log
-            .warning(
-                "\(sourceEntry.source.rawValue, privacy: .public) timed out after \(query.timeout, privacy: .public)"
-            )
-        return SourceServiceOutcome(
-            result: YearResult(),
-            shouldCacheEmptyResult: false,
-            didCompleteLookup: false
         )
     } catch is CancellationError {
         log.debug("\(sourceEntry.source.rawValue, privacy: .public) cancelled")
@@ -688,7 +670,6 @@ private struct SourceQuery {
     let album: String
     let currentLibraryYear: Int?
     let earliestTrackAddedYear: Int?
-    let timeout: Duration
 }
 
 private struct SourceCacheContext {

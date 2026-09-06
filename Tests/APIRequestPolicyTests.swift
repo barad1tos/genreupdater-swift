@@ -14,10 +14,13 @@ struct APIRequestPolicyTests {
         configuration.yearRetrieval.rateLimits.discogsRequestsPerMinute = 300
         configuration.yearRetrieval.rateLimits.musicbrainzRequestsPerSecond = 10
         configuration.yearRetrieval.rateLimits.itunesRequestsPerSecond = 20
+        configuration.yearRetrieval.requestTimeoutSeconds = 22.5
         let service = DashboardStateAPIService()
         var capturedDiscogs: TokenBucketRateLimiter?
         var capturedMusicBrainz: TokenBucketRateLimiter?
         var capturedITunes: TokenBucketRateLimiter?
+        var capturedMusicBrainzTimeout: TimeInterval?
+        var capturedITunesTimeout: TimeInterval?
         let factories = APIClientFactoryOverrides(
             configuredDiscogsClientFactory: { token, contactEmail, rateLimiter, baseURL in
                 capturedDiscogs = rateLimiter
@@ -28,12 +31,14 @@ struct APIRequestPolicyTests {
                     baseURL: baseURL
                 )
             },
-            musicBrainzFactory: { _, _, rateLimiter, _, _ in
+            musicBrainzFactory: { _, _, rateLimiter, _, transport in
                 capturedMusicBrainz = rateLimiter
+                capturedMusicBrainzTimeout = transport.requestTimeoutSeconds
                 return service
             },
-            catalogFactory: { _, rateLimiter, _ in
+            catalogFactory: { _, rateLimiter, transport in
                 capturedITunes = rateLimiter
+                capturedITunesTimeout = transport.requestTimeoutSeconds
                 return service
             }
         )
@@ -54,6 +59,8 @@ struct APIRequestPolicyTests {
         #expect(await discogs.getStats().currentTokens == 1)
         #expect(await musicBrainz.getStats().currentTokens == 1)
         #expect(await itunes.getStats().currentTokens == 1)
+        #expect(capturedMusicBrainzTimeout == 22.5)
+        #expect(capturedITunesTimeout == 22.5)
     }
 
     @Test("Legacy zero MusicBrainz rate keeps its former effective pacing")
@@ -85,7 +92,7 @@ struct APIRequestPolicyTests {
         let decimalSeparator = Locale.current.decimalSeparator ?? "."
         #expect(APICacheTab.musicBrainzRateText(0) == "1\(decimalSeparator)0 (legacy setting: 0)")
         #expect(APICacheTab.musicBrainzRateText(2.5) == "2\(decimalSeparator)5")
-        #expect(APICacheTab.providerTimeoutText(22.5) == "22\(decimalSeparator)5s")
-        #expect(APICacheTab.providerTimeoutText(15) == "15s")
+        #expect(APICacheTab.requestTimeoutText(22.5) == "22\(decimalSeparator)5s")
+        #expect(APICacheTab.requestTimeoutText(45) == "45s")
     }
 }

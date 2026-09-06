@@ -13,7 +13,9 @@ extension APIOrchestrator {
         normalizedArtist: String
     ) async -> (start: Int?, end: Int?) {
         do {
-            return try await musicBrainz.getArtistActivityPeriod(normalizedArtist: normalizedArtist)
+            return try await providerAdmission.execute {
+                try await self.musicBrainz.getArtistActivityPeriod(normalizedArtist: normalizedArtist)
+            }
         } catch {
             AppLogger.api.warning(
                 "MusicBrainz artist activity lookup failed: \(error.localizedDescription, privacy: .public)"
@@ -33,9 +35,9 @@ extension APIOrchestrator {
         let musicBrainzStartYear: Int?
         var hasProviderFailure = false
         do {
-            (musicBrainzStartYear, _) = try await musicBrainz.getArtistActivityPeriod(
-                normalizedArtist: normalizedArtist
-            )
+            (musicBrainzStartYear, _) = try await providerAdmission.execute {
+                try await self.musicBrainz.getArtistActivityPeriod(normalizedArtist: normalizedArtist)
+            }
         } catch {
             hasProviderFailure = true
             musicBrainzStartYear = nil
@@ -53,7 +55,10 @@ extension APIOrchestrator {
         }
 
         do {
-            if let appleMusicStartYear = try await appleMusic.getArtistStartYear(normalizedArtist: normalizedArtist) {
+            let appleMusicStartYear = try await providerAdmission.execute {
+                try await self.appleMusic.getArtistStartYear(normalizedArtist: normalizedArtist)
+            }
+            if let appleMusicStartYear {
                 await cache?.set(
                     key: cacheKey,
                     value: appleMusicStartYear,

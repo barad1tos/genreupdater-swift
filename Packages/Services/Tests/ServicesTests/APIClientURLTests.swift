@@ -62,6 +62,9 @@ struct MusicBrainzURLTests {
 
         let fallbackRequest = MusicBrainzClient(appName: "  ").makeRequest(for: url)
         #expect(fallbackRequest.value(forHTTPHeaderField: "User-Agent")?.contains("GenreUpdater/1.0") == true)
+
+        let timedRequest = client.withRequestTimeout(seconds: 22.5).makeRequest(for: url)
+        #expect(timedRequest.timeoutInterval == 22.5)
     }
 
     @Test("getArtistActivityPeriod returns (nil, nil) stub")
@@ -274,6 +277,9 @@ struct DiscogsURLTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Discogs token=test-token-123")
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
         #expect(request.value(forHTTPHeaderField: "User-Agent")?.contains("GenreUpdater") == true)
+
+        let timedRequest = client.withRequestTimeout(seconds: 22.5).makeRequest(for: url)
+        #expect(timedRequest.timeoutInterval == 22.5)
     }
 
     @Test("makeRequest omits Authorization header when token is nil")

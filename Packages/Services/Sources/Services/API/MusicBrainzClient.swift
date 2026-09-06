@@ -28,6 +28,7 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
     private let albumSuffixes: [String]
     private let rawRequestCache: RawAPIRequestCache?
     private let analytics: (any AnalyticsService)?
+    private var requestPolicy = ProviderRequestPolicy()
     private let log = AppLogger.api
 
     static let defaultPolicy: TokenBucketRateLimiter.Policy = {
@@ -43,6 +44,13 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
     #if DEBUG
     private var testHooks: TestHooks?
     #endif
+
+    /// Returns a copy whose individual MusicBrainz requests use the supplied timeout.
+    public func withRequestTimeout(seconds: TimeInterval) -> Self {
+        var copy = self
+        copy.requestPolicy = ProviderRequestPolicy(timeoutSeconds: seconds)
+        return copy
+    }
 
     private struct ReleaseGroupFetch {
         let groups: [MBReleaseGroup]
@@ -296,7 +304,7 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
     /// Sets `User-Agent` (required by MusicBrainz API policy) and
     /// `Accept: application/json` for JSON responses.
     func makeRequest(for url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
+        var request = requestPolicy.request(for: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
@@ -501,7 +509,10 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
         } == true
     }
 
-    private static func rethrowCancellation(_ error: any Error) throws {
+    static func rethrowCancellation(_ error: any Error) throws {
+        if error is ProviderRequestTimeout {
+            throw error
+        }
         let bridgedError = error as NSError
         let cancellationDomain = (CancellationError() as NSError).domain
         if Task.isCancelled ||
@@ -746,21 +757,25 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
 
     private func measuredFetch(url: URL, operation: AnalyticsOperation) async throws -> Data {
         guard let analytics else {
-            return try await performRateLimitedFetch(url: url)
+            return try await performRateLimitedFetch(url: url, operation: operation)
         }
         return try await analytics.measure(operation) {
-            try await performRateLimitedFetch(url: url)
+            try await performRateLimitedFetch(url: url, operation: operation)
         }
     }
 
-    private func performRateLimitedFetch(url: URL) async throws -> Data {
+    private func performRateLimitedFetch(url: URL, operation: AnalyticsOperation) async throws -> Data {
         let waitTime = try await rateLimiter.acquireCancellable()
         if waitTime > .zero {
             log.debug("Rate limited, waited \(waitTime, privacy: .public)")
         }
 
         let request = makeRequest(for: url)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await requestPolicy.performClientRequest(
+            operation: ProviderRequestOperation(operation)
+        ) {
+            try await session.data(for: request)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MusicBrainzError.invalidResponse

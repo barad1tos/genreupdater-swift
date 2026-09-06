@@ -24,7 +24,9 @@ extension APIOrchestrator {
         }
 
         do {
-            let region = try await musicBrainz.getArtistRegion(artist: normalizedArtist)
+            let region = try await providerAdmission.execute {
+                try await self.musicBrainz.getArtistRegion(artist: normalizedArtist)
+            }
             await cache?.set(
                 key: cacheKey,
                 value: region ?? ArtistRegionCache.notFoundSentinel,

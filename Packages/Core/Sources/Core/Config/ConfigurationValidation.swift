@@ -396,18 +396,23 @@ extension AppConfiguration {
             path: "yearRetrieval.rateLimits.itunesRequestsPerSecond"
         )
         validation.requireAtLeast(
-            yearRetrieval.providerTimeoutSeconds,
+            yearRetrieval.requestTimeoutSeconds,
             minimum: 1,
-            path: "yearRetrieval.providerTimeoutSeconds"
+            path: "yearRetrieval.requestTimeoutSeconds"
         )
         validation.requireMillisecondCapacity(
-            yearRetrieval.providerTimeoutSeconds,
-            path: "yearRetrieval.providerTimeoutSeconds"
+            yearRetrieval.requestTimeoutSeconds,
+            path: "yearRetrieval.requestTimeoutSeconds"
         )
         validation.requireAtLeast(
-            yearRetrieval.rateLimits.concurrentAPICalls,
+            yearRetrieval.rateLimits.concurrentAlbums,
             minimum: 1,
-            path: "yearRetrieval.rateLimits.concurrentAPICalls"
+            path: "yearRetrieval.rateLimits.concurrentAlbums"
+        )
+        validation.requireAtLeast(
+            yearRetrieval.rateLimits.concurrentProviderCalls,
+            minimum: 1,
+            path: "yearRetrieval.rateLimits.concurrentProviderCalls"
         )
     }
 

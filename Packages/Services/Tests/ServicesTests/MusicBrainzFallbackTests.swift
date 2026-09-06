@@ -378,6 +378,18 @@ extension CandidateAdapterTests {
         ])
     }
 
+    @Test("MusicBrainz treats a hard deadline as terminal")
+    func hardDeadlineIsTerminal() {
+        let timeout = ProviderRequestTimeout(
+            operation: ProviderRequestOperation(.musicBrainzReleaseSearch),
+            timeoutSeconds: 0.01
+        )
+
+        #expect(throws: ProviderRequestTimeout.self) {
+            try MusicBrainzClient.rethrowCancellation(timeout)
+        }
+    }
+
     @Test("MusicBrainz continues from failed generic search to album-only search")
     func genericFailureContinues() async throws {
         APIReleaseCandidateMockURLProtocol.requestedQueries = []

@@ -38,6 +38,7 @@ enum DiscogsCredentialIssue: Equatable {
 struct ProviderTransportContext {
     let rawRequestCache: RawAPIRequestCache?
     let analytics: (any AnalyticsService)?
+    let requestTimeoutSeconds: TimeInterval
 }
 
 struct APIClientFactoryOverrides {
@@ -142,6 +143,7 @@ struct APIClientFactoryOverrides {
             rawRequestCache: transport.rawRequestCache,
             analytics: transport.analytics
         )
+        .withRequestTimeout(seconds: transport.requestTimeoutSeconds)
     }
 }
 
@@ -303,7 +305,8 @@ extension AppDependencies {
         )
         let transport = ProviderTransportContext(
             rawRequestCache: rawRequestCache,
-            analytics: analytics
+            analytics: analytics,
+            requestTimeoutSeconds: configuration.yearRetrieval.requestTimeoutSeconds
         )
         let musicBrainz = factoryOverrides.musicBrainz ?? factoryOverrides.musicBrainzFactory(
             apiAuth.musicBrainzAppName,
@@ -326,7 +329,8 @@ extension AppDependencies {
                     .withSearchConfiguration(configuration.yearRetrieval.discogsSearch)
                     .withReissueKeywords(configuration.yearRetrieval.reissueDetection.reissueKeywords)
                     .withRawRequestCache(transport.rawRequestCache)
-                    .withAnalytics(transport.analytics),
+                    .withAnalytics(transport.analytics)
+                    .withRequestTimeout(seconds: transport.requestTimeoutSeconds),
                 appleMusic: appleMusic
             ),
             disabledSources: discogsContext.disabledSources
@@ -464,6 +468,7 @@ extension AppDependencies {
             rawRequestCache: transport.rawRequestCache,
             analytics: transport.analytics
         )
+        .withRequestTimeout(seconds: transport.requestTimeoutSeconds)
     }
 
     private static func itunesLimiter(configuration: AppConfiguration) -> TokenBucketRateLimiter {

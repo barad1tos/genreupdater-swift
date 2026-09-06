@@ -42,6 +42,7 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
     private let authorizeMusic: @Sendable () async -> MusicAuthorization.Status
     private let findReleaseDate: @Sendable (String) async throws -> Date?
     private var analytics: (any AnalyticsService)?
+    private var requestPolicy = ProviderRequestPolicy()
     private let log = AppLogger.api
 
     static let defaultPolicy: TokenBucketRateLimiter.Policy = {
@@ -170,7 +171,9 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
             throw CatalogSearchError.authorizationRequired
         }
 
-        guard let releaseDate = try await findReleaseDate("\(artist) \(album)") else {
+        guard let releaseDate = try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, {
+            try await findReleaseDate("\(artist) \(album)")
+        }) else {
             log.debug(
                 "No Apple Music results for \(artist, privacy: .private) - \(album, privacy: .private)"
             )
@@ -278,6 +281,13 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
         // No-op: no persistent connections to close
     }
 
+    /// Returns a copy whose individual MusicKit and iTunes requests use the supplied timeout.
+    public func withRequestTimeout(seconds: TimeInterval) -> Self {
+        var copy = self
+        copy.requestPolicy = ProviderRequestPolicy(timeoutSeconds: seconds)
+        return copy
+    }
+
     // MARK: - Private
 
     private static func findReleaseDate(for term: String) async throws -> Date? {
@@ -294,7 +304,7 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
     }
 
     private func paced(_ rateLimiter: TokenBucketRateLimiter) -> Self {
-        Self(
+        var copy = Self(
             session: session,
             countryCode: countryCode,
             entity: entity,
@@ -307,6 +317,8 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
             authorizeMusic: authorizeMusic,
             findReleaseDate: findReleaseDate
         )
+        copy.requestPolicy = requestPolicy
+        return copy
     }
 
     static func buildArtistAlbumsSearchURL(
@@ -375,7 +387,12 @@ public struct CatalogSearchClient: ExternalAPIService, Sendable {
 
     private func performITunesFetchBody(from url: URL) async throws -> Data {
         _ = try await rateLimiter.acquireCancellable()
-        let (data, response) = try await session.data(from: url)
+        let request = requestPolicy.request(for: url)
+        let (data, response) = try await requestPolicy.performClientRequest(
+            operation: ProviderRequestOperation(.iTunesReleaseSearch)
+        ) {
+            try await session.data(for: request)
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
             log.warning("iTunes request returned a non-HTTP response")
             throw ITunesSearchError.nonHTTPResponse

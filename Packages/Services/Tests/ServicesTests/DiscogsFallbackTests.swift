@@ -161,6 +161,18 @@ extension DiscogsClientRequestTests {
         #expect(lookup.requests.count == 2)
     }
 
+    @Test("Discogs treats a hard deadline as terminal")
+    func hardDeadlineIsTerminal() {
+        let timeout = ProviderRequestTimeout(
+            operation: ProviderRequestOperation(.discogsReleaseSearch),
+            timeoutSeconds: 0.01
+        )
+
+        #expect(throws: ProviderRequestTimeout.self) {
+            try DiscogsClient.rethrowTerminal(timeout)
+        }
+    }
+
     @Test("getReleaseCandidates preserves a provider failure when fallbacks are empty")
     func releaseCandidatesPreserveFailure() async {
         let outcome = await releaseCandidateOutcome { url in

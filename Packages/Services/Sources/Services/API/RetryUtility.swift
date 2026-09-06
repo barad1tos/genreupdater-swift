@@ -86,8 +86,8 @@ func withRetry<T: Sendable>(
 /// Default transient error classifier.
 ///
 /// Retryable: `MusicBrainzError.serviceUnavailable`, `DiscogsError.rateLimited`,
-/// `URLError` transient codes (`.timedOut`, `.networkConnectionLost`,
-/// `.notConnectedToInternet`, `.cannotConnectToHost`).
+/// and transient `URLError` codes. Provider hard deadlines use a distinct,
+/// non-retryable error because their underlying transport may still be active.
 /// Non-retryable: everything else.
 public func isTransientError(_ error: any Error) -> Bool {
     switch error {

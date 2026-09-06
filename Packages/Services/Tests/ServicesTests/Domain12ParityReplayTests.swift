@@ -193,7 +193,7 @@ struct Domain12ParityReplayTests {
         var configuration = AppConfiguration()
         configuration.genreUpdate.concurrentLimit = limits.artist
         configuration.applescript.concurrency = limits.musicApp
-        configuration.yearRetrieval.rateLimits.concurrentAPICalls = limits.provider
+        configuration.yearRetrieval.rateLimits.concurrentAlbums = limits.albumWorkflows
         return FixPlanConfig.capture(
             configuration: configuration,
             options: UpdateOptions(updateGenre: true, updateYear: true, minConfidence: 60),
@@ -364,7 +364,7 @@ private struct ConcurrencyCase: Decodable {
 private struct Limits: Decodable {
     let artist: Int
     let musicApp: Int
-    let provider: Int
+    let albumWorkflows: Int
 }
 
 private struct OrchestrationCase: Decodable {

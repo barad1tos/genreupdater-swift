@@ -12,7 +12,6 @@ struct ReleaseCandidateAPITests {
             discogs: MockAPIService(),
             appleMusic: MockAPIService(),
             cache: MockCacheService(),
-            timeout: .seconds(1),
             disabledSources: [.musicBrainz, .discogs, .itunes]
         )
 

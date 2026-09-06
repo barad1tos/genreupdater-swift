@@ -5,17 +5,22 @@ import Testing
 
 @Suite("Provider default pacing", .serialized)
 struct ProviderPacingTests {
-    @Test("Discogs direct clients do not retain the former initial burst")
-    func discogsDefault() async throws {
+    @Test(
+        "Discogs direct clients do not retain the former initial burst",
+        arguments: [Duration.zero, .milliseconds(850)]
+    )
+    func discogsDefault(startDelay: Duration) async throws {
         let timeline = RequestTimeline()
         let session = makePacingSession(timeline: timeline)
         defer { session.invalidateAndCancel() }
+        let startedAt = ContinuousClock().now
         let client = DiscogsClient(
             token: "test-token",
             session: session,
             baseURL: DiscogsClient.defaultBaseURL
         )
         try #require(DiscogsClient.defaultPolicy == .init(maxTokens: 1, refillInterval: .milliseconds(1091)))
+        try await Task.sleep(for: startDelay)
 
         _ = try await client.getAlbumYear(
             artist: "Iron Maiden",
@@ -30,8 +35,8 @@ struct ProviderPacingTests {
             earliestTrackAddedYear: nil
         )
 
-        let delay = try timeline.firstRequestDelay()
-        #expect(delay >= .milliseconds(500))
+        let delay = try timeline.secondRequestDelay(since: startedAt)
+        #expect(delay >= .milliseconds(1091))
     }
 
     @Test("MusicBrainz direct clients use the centralized one-second default")
@@ -39,14 +44,15 @@ struct ProviderPacingTests {
         let timeline = RequestTimeline()
         let session = makePacingSession(timeline: timeline)
         defer { session.invalidateAndCancel() }
+        let startedAt = ContinuousClock().now
         let client = MusicBrainzClient(session: session)
         try #require(MusicBrainzClient.defaultPolicy == .init(maxTokens: 1, refillInterval: .seconds(1)))
 
         _ = try await client.getArtistRegion(artist: "Test Artist")
         _ = try await client.getArtistRegion(artist: "Test Artist")
 
-        let delay = try timeline.firstRequestDelay()
-        #expect(delay >= .milliseconds(400))
+        let delay = try timeline.secondRequestDelay(since: startedAt)
+        #expect(delay >= .seconds(1))
     }
 
     @Test("iTunes direct clients use the centralized ten-per-second default")
@@ -54,6 +60,7 @@ struct ProviderPacingTests {
         let timeline = RequestTimeline()
         let session = makePacingSession(timeline: timeline)
         defer { session.invalidateAndCancel() }
+        let startedAt = ContinuousClock().now
         let client = CatalogSearchClient(session: session, lookupFallbackEnabled: false)
         try #require(CatalogSearchClient.defaultPolicy == .init(maxTokens: 1, refillInterval: .milliseconds(100)))
 
@@ -70,8 +77,8 @@ struct ProviderPacingTests {
             earliestTrackAddedYear: nil
         )
 
-        let delay = try timeline.firstRequestDelay()
-        #expect(delay >= .milliseconds(20))
+        let delay = try timeline.secondRequestDelay(since: startedAt)
+        #expect(delay >= .milliseconds(100))
     }
 }
 
@@ -85,11 +92,12 @@ private final class RequestTimeline: @unchecked Sendable {
         }
     }
 
-    func firstRequestDelay() throws -> Duration {
+    /// The bucket refills from initialization, not from URLProtocol's first callback.
+    /// Scheduling delays may consume part of the interval before that callback runs.
+    func secondRequestDelay(since startedAt: ContinuousClock.Instant) throws -> Duration {
         try lock.withLock {
-            let first = try #require(starts.first)
             let second = try #require(starts.dropFirst().first)
-            return first.duration(to: second)
+            return startedAt.duration(to: second)
         }
     }
 }

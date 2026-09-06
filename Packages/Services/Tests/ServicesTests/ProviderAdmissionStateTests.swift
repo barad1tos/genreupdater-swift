@@ -61,6 +61,131 @@ struct ProviderAdmissionStateTests {
         #expect(await order.names == ["first", "third"])
     }
 
+    @Test("Cancellation while queued removes the operation and preserves permit accounting")
+    func cancelsQueuedOperation() async throws {
+        let enqueueProbe = AdmissionEnqueueProbe()
+        let order = AdmissionOrderProbe()
+        let firstGate = AdmissionOperationGate()
+        let admission = ProviderAdmission(
+            limit: 1,
+            hooks: (didEnqueue: { enqueueProbe.record() }, afterGrant: nil)
+        )
+
+        let first = operationTask(admission, name: "first", order: order, gate: firstGate)
+        #expect(await order.waitForCount(1))
+        let cancelled = operationTask(admission, name: "cancelled", order: order)
+        #expect(await enqueueProbe.waitForCount(1))
+        let third = operationTask(admission, name: "third", order: order)
+        #expect(await enqueueProbe.waitForCount(2))
+
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) {
+            _ = try await taskValue(cancelled, timeout: AdmissionTestTiming.coordinationTimeout)
+        }
+        await firstGate.open()
+        try await awaitOperations([first, third])
+
+        let fourth = operationTask(admission, name: "fourth", order: order)
+        try await awaitOperations([fourth])
+        #expect(await order.names == ["first", "third", "fourth"])
+    }
+
+    @Test("Timed-out request retains its permit until the underlying operation finishes")
+    func timedOutRequestRetainsPermit() async throws {
+        let admission = ProviderAdmission(limit: 1)
+        let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 0.01)
+        let firstStarted = EventCounter()
+        let order = AdmissionOrderProbe()
+        let firstGate = AdmissionOperationGate()
+
+        let request: @Sendable () async -> Void = {
+            firstStarted.record()
+            await firstGate.wait()
+        }
+        let first = Task {
+            try await admission.execute {
+                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
+            }
+        }
+        #expect(await firstStarted.wait(for: 1, timeout: .seconds(1)))
+        await #expect(throws: ProviderRequestTimeout.self) {
+            _ = try await taskValue(first, timeout: .seconds(1))
+        }
+
+        let second = Task {
+            try await admission.execute {
+                await order.record("second")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await order.names.isEmpty)
+
+        await firstGate.open()
+        #expect(await order.waitForCount(1))
+        _ = try await taskValue(second, timeout: .seconds(1))
+    }
+
+    @Test("Cancelled request retains its permit until the underlying operation finishes")
+    func cancelledRequestRetainsPermit() async throws {
+        let admission = ProviderAdmission(limit: 1)
+        let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 30)
+        let firstStarted = EventCounter()
+        let order = AdmissionOrderProbe()
+        let firstGate = AdmissionOperationGate()
+
+        let request: @Sendable () async -> Void = {
+            firstStarted.record()
+            await firstGate.wait()
+        }
+        let first = Task {
+            try await admission.execute {
+                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
+            }
+        }
+        #expect(await firstStarted.wait(for: 1, timeout: .seconds(1)))
+        first.cancel()
+        await #expect(throws: CancellationError.self) {
+            _ = try await taskValue(first, timeout: .seconds(1))
+        }
+
+        let second = Task {
+            try await admission.execute {
+                await order.record("second")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await order.names.isEmpty)
+
+        await firstGate.open()
+        #expect(await order.waitForCount(1))
+        _ = try await taskValue(second, timeout: .seconds(1))
+    }
+
+    @Test("Escaped tasks cannot start requests after their call releases admission")
+    func rejectsEscapedRequest() async throws {
+        let admission = ProviderAdmission(limit: 1)
+        let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 1)
+        let requestGate = AdmissionOperationGate()
+        let requestStarted = EventCounter()
+
+        let request: @Sendable () async -> Int = {
+            requestStarted.record()
+            return 1
+        }
+        let escapedRequest = try await admission.execute {
+            Task {
+                await requestGate.wait()
+                return try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
+            }
+        }
+
+        await requestGate.open()
+        await #expect(throws: ProviderPermitLeaseError.self) {
+            _ = try await taskValue(escapedRequest, timeout: .seconds(1))
+        }
+        #expect(await !requestStarted.wait(for: 1, timeout: .milliseconds(50)))
+    }
+
     private func operationTask(
         _ admission: ProviderAdmission,
         name: String,
@@ -68,7 +193,7 @@ struct ProviderAdmissionStateTests {
         gate: AdmissionOperationGate? = nil
     ) -> Task<Void, any Error> {
         Task {
-            try await admission.execute(timeout: AdmissionTestTiming.coordinationTimeout) {
+            try await admission.execute {
                 await order.record(name)
                 await gate?.wait()
             }
