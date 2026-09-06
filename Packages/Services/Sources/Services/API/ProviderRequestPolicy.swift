@@ -45,32 +45,12 @@ struct ProviderRequestPolicy: Sendable {
         let deadline = RequestDeadline<Value>()
         let finishTrackedRequest = try ProviderPermitScope.current?.beginRequest()
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { waitingContinuation in
-                deadline.install(waitingContinuation)
-                deadline.installOperation(Task {
-                    let outcome: Result<Value, any Error>
-                    do {
-                        try Task.checkCancellation()
-                        let value = try await request()
-                        outcome = .success(value)
-                    } catch {
-                        outcome = .failure(error)
-                    }
-                    finishTrackedRequest?()
-                    deadline.resolve(outcome)
-                })
-                deadline.installTimeout(Task {
-                    do {
-                        try await Task.sleep(for: .seconds(timeoutSeconds))
-                    } catch {
-                        return
-                    }
-                    deadline.resolve(.failure(ProviderRequestTimeout(
-                        operation: operation,
-                        timeoutSeconds: timeoutSeconds
-                    )))
-                })
-            }
+            try await deadline.wait(
+                operation: operation,
+                timeoutSeconds: timeoutSeconds,
+                finishTrackedRequest: finishTrackedRequest,
+                request: request
+            )
         } onCancel: {
             deadline.resolve(.failure(CancellationError()))
         }
@@ -85,6 +65,40 @@ private final class RequestDeadline<Value: Sendable>: @unchecked Sendable {
     private var activeOperation: Task<Void, Never>?
     private var activeTimeout: Task<Void, Never>?
     private var isResolved = false
+
+    func wait(
+        operation: ProviderRequestOperation,
+        timeoutSeconds: TimeInterval,
+        finishTrackedRequest: (@Sendable () -> Void)?,
+        request: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { waitingContinuation in
+            install(waitingContinuation)
+            installOperation(Task {
+                let outcome: Result<Value, any Error>
+                do {
+                    try Task.checkCancellation()
+                    let value = try await request()
+                    outcome = .success(value)
+                } catch {
+                    outcome = .failure(error)
+                }
+                finishTrackedRequest?()
+                resolve(outcome)
+            })
+            installTimeout(Task {
+                do {
+                    try await Task.sleep(for: .seconds(timeoutSeconds))
+                } catch {
+                    return
+                }
+                resolve(.failure(ProviderRequestTimeout(
+                    operation: operation,
+                    timeoutSeconds: timeoutSeconds
+                )))
+            })
+        }
+    }
 
     func install(_ waitingContinuation: CheckedContinuation<Value, any Error>) {
         let resolvedResult = lock.withLock {

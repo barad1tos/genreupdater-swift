@@ -33,21 +33,17 @@ struct ProviderAdmissionRetryTests {
         let requestStarted = EventCounter()
         let requestGate = AdmissionRetryGate()
 
-        let lookup = Task {
-            try await admission.execute {
-                try await withRetry(
-                    maxAttempts: 2,
-                    initialDelay: .zero,
-                    jitter: { $0 },
-                    sleep: { _ in },
-                    operation: {
-                        try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
-                            requestStarted.record()
-                            await requestGate.wait()
-                        }
-                    }
-                )
+        let request: @Sendable () async throws -> Void = {
+            try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
+                requestStarted.record()
+                await requestGate.wait()
             }
+        }
+        let retry: @Sendable () async throws -> Void = {
+            try await withRetry(maxAttempts: 2, initialDelay: .zero, operation: request)
+        }
+        let lookup = Task {
+            try await admission.execute(operation: retry)
         }
 
         #expect(await requestStarted.wait(for: 1, timeout: .seconds(1)))
@@ -71,18 +67,13 @@ struct ProviderAdmissionRetryTests {
         let requestPolicy = ProviderRequestPolicy(timeoutSeconds: 1)
         let attempts = TransportTimeoutAttempts()
 
+        let request: @Sendable () async throws -> Int = {
+            try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
+                try await attempts.nextResult()
+            }
+        }
         let result = try await admission.execute {
-            try await withRetry(
-                maxAttempts: 2,
-                initialDelay: .zero,
-                jitter: { $0 },
-                sleep: { _ in },
-                operation: {
-                    try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
-                        try await attempts.nextResult()
-                    }
-                }
-            )
+            try await withRetry(maxAttempts: 2, initialDelay: .zero, operation: request)
         }
 
         #expect(result == 2)

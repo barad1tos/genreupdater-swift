@@ -98,12 +98,13 @@ struct ProviderAdmissionStateTests {
         let order = AdmissionOrderProbe()
         let firstGate = AdmissionOperationGate()
 
+        let request: @Sendable () async -> Void = {
+            firstStarted.record()
+            await firstGate.wait()
+        }
         let first = Task {
             try await admission.execute {
-                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
-                    firstStarted.record()
-                    await firstGate.wait()
-                }
+                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
             }
         }
         #expect(await firstStarted.wait(for: 1, timeout: .seconds(1)))
@@ -132,12 +133,13 @@ struct ProviderAdmissionStateTests {
         let order = AdmissionOrderProbe()
         let firstGate = AdmissionOperationGate()
 
+        let request: @Sendable () async -> Void = {
+            firstStarted.record()
+            await firstGate.wait()
+        }
         let first = Task {
             try await admission.execute {
-                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
-                    firstStarted.record()
-                    await firstGate.wait()
-                }
+                try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
             }
         }
         #expect(await firstStarted.wait(for: 1, timeout: .seconds(1)))
@@ -166,13 +168,14 @@ struct ProviderAdmissionStateTests {
         let requestGate = AdmissionOperationGate()
         let requestStarted = EventCounter()
 
+        let request: @Sendable () async -> Int = {
+            requestStarted.record()
+            return 1
+        }
         let escapedRequest = try await admission.execute {
             Task {
                 await requestGate.wait()
-                return try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch) {
-                    requestStarted.record()
-                    return 1
-                }
+                return try await requestPolicy.performClientRequest(operation: .appleMusicCatalogSearch, request)
             }
         }
 
