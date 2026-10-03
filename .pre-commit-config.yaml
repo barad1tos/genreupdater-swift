@@ -70,14 +70,14 @@ repos:
 
       - id: periphery-core
         name: Periphery (Core)
-        entry: bash -c 'cd Packages/Core && periphery scan --retain-public --retain-codable-properties --format xcode --strict'
+        entry: bash -c 'cd Packages/Core && periphery scan --retain-public --retain-codable-properties --format xcode --strict -- --build-system native'
         language: system
         pass_filenames: false
         files: ^Packages/Core/
 
       - id: periphery-services
         name: Periphery (Services)
-        entry: bash -c 'cd Packages/Services && periphery scan --retain-public --retain-codable-properties --format xcode --strict'
+        entry: bash -c 'cd Packages/Services && periphery scan --retain-public --retain-codable-properties --format xcode --strict -- --build-system native'
         language: system
         pass_filenames: false
         files: ^Packages/(Core|Services)/
