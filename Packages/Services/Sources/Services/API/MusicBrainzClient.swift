@@ -98,9 +98,9 @@ public struct MusicBrainzClient: ExternalAPIService, Sendable {
         let trimmedAppName = appName.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectiveAppName = trimmedAppName.isEmpty ? "GenreUpdater/1.0" : trimmedAppName
         if contactEmail.isEmpty {
-            self.userAgent = "\(effectiveAppName) (https://github.com/barad1tos/project-genreupdater-swift)"
+            self.userAgent = "\(effectiveAppName) (https://github.com/barad1tos/genreupdater-swift)"
         } else {
-            self.userAgent = "\(effectiveAppName) (\(contactEmail); https://github.com/barad1tos/project-genreupdater-swift)"
+            self.userAgent = "\(effectiveAppName) (\(contactEmail); https://github.com/barad1tos/genreupdater-swift)"
         }
         self.session = session
         self.baseURL = baseURL
