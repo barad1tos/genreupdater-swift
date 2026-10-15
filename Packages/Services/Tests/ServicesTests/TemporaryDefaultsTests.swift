@@ -53,7 +53,8 @@ struct TemporaryDefaultsTests {
     }
 
     private func storedValue(inPlistAt path: String) -> String? {
-        NSDictionary(contentsOfFile: path)?[Self.key] as? String
+        let contents = try? NSDictionary(contentsOf: URL(fileURLWithPath: path), error: ())
+        return contents?[Self.key] as? String
     }
 
     private func describeDirectory(of path: String) -> String {
