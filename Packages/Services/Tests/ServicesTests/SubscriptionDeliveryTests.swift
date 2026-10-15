@@ -13,9 +13,11 @@ struct DeliveryRaceTests {
         let decision = DeliveryDecisionGate()
         let oldFinish = FinishRecorder()
         let newFinish = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -68,9 +70,11 @@ struct DeliveryRaceTests {
         let source = EntitlementStub(snapshot: StoreEntitlementSnapshot())
         let decisions = DeliveryDecisionQueue()
         let finish = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )

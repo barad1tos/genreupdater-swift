@@ -76,9 +76,9 @@ struct AppProcessModeTests {
     @MainActor
     @Test("Direct unit-test initialization never starts live services")
     func directInitializationIsInert() async throws {
-        let suiteName = "AppProcessModeTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         defaults.set("genre_only", forKey: AppStorageKey.defaultUpdateBehavior)
         var savedConfigurations: [AppConfiguration] = []
         let dependencies = AppDependencies(

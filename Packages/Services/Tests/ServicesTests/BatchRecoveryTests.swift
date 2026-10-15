@@ -119,9 +119,9 @@ struct BatchRecoveryTests {
             .appendingPathComponent("BP-invalid-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let suiteName = "BatchRecoveryTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let suiteName = temporaryDefaults.suiteName
         let gate = await FeatureGate(fixedTier: .pro)
         let processor = BatchProcessor(
             checkpointManager: CheckpointManager(directory: root, recoverySuiteName: suiteName),

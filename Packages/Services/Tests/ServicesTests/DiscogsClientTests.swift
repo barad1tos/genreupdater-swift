@@ -13,8 +13,9 @@ import Testing
 struct DiscogsClientTests {
     @Test("Saving a credential advances its revision")
     func saveAdvancesRevision() throws {
-        let (defaults, suite) = try credentialDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let initial = DiscogsClient.credentialRevision(defaults: defaults)
         let keychain = InMemoryKeychainOperations()
 
@@ -29,8 +30,9 @@ struct DiscogsClientTests {
 
     @Test("Rejected credential save preserves its revision")
     func failedSaveIsStable() throws {
-        let (defaults, suite) = try credentialDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let initial = DiscogsClient.credentialRevision(defaults: defaults)
         let status = errSecUserCanceled
         let hooks = KeychainOperationHooks(
@@ -51,8 +53,9 @@ struct DiscogsClientTests {
 
     @Test("Deleting a saved credential advances its revision")
     func deleteAdvancesRevision() throws {
-        let (defaults, suite) = try credentialDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let keychain = InMemoryKeychainOperations()
         keychain.seed(
             token: "saved-token",
@@ -74,8 +77,9 @@ struct DiscogsClientTests {
 
     @Test("Rejected credential deletion preserves its revision")
     func failedDeleteIsStable() throws {
-        let (defaults, suite) = try credentialDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let initial = DiscogsClient.credentialRevision(defaults: defaults)
         let status = errSecUserCanceled
         let hooks = KeychainOperationHooks(
@@ -98,8 +102,9 @@ struct DiscogsClientTests {
         [errSecUserCanceled, errSecSuccess],
     ])
     func partialDeleteInvalidates(statuses: [OSStatus]) throws {
-        let (defaults, suite) = try credentialDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let initial = DiscogsClient.credentialRevision(defaults: defaults)
         var remainingStatuses = statuses
         let hooks = KeychainOperationHooks(
@@ -280,10 +285,5 @@ struct DiscogsClientTests {
         let userAgent = request.value(forHTTPHeaderField: "User-Agent")
         #expect(userAgent != nil)
         #expect(userAgent?.contains("GenreUpdater") == true)
-    }
-
-    private func credentialDefaults() throws -> (defaults: UserDefaults, suite: String) {
-        let suite = "DiscogsClientTests.credentialRevision.\(UUID().uuidString)"
-        return try (#require(UserDefaults(suiteName: suite)), suite)
     }
 }

@@ -90,9 +90,9 @@ struct CheckpointManagerTests {
     func loadsCorruptRecoveryMarker() async throws {
         let dir = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let suiteName = "CheckpointManagerTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let suiteName = temporaryDefaults.suiteName
         let manager = CheckpointManager(directory: dir, recoverySuiteName: suiteName)
         let recovery = makeCheckpoint(requiresRecovery: true)
         try await manager.save(recovery)
