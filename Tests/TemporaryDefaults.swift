@@ -8,6 +8,7 @@ import Testing
 /// Given an absolute path as its suite name, UserDefaults stores the domain in `<suiteName>.plist`,
 /// so the plist stays in the temporary directory and `remove()` deletes it with the directory.
 /// Apple documents plist-path domains only for `defaults(1)`, so `TemporaryDefaultsTests` pins it.
+/// Call `remove()` last: a write after it creates the directory again.
 /// The ServicesTests target keeps a twin of this helper in
 /// `Packages/Services/Tests/ServicesTests/TemporaryDefaults.swift`; change both together.
 struct TemporaryDefaults {
