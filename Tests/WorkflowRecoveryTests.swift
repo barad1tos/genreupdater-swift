@@ -56,9 +56,9 @@ struct WorkflowRecoveryTests {
             .appendingPathComponent("Workflow-invalid-\(UUID().uuidString)")
         try Data("not-a-directory".utf8).write(to: checkpointRoot)
         defer { try? FileManager.default.removeItem(at: checkpointRoot) }
-        let suiteName = "WorkflowRecoveryTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let suiteName = temporaryDefaults.suiteName
         let firstFixture = makeWorkflowFixture(configure: { options in
             options.checkpointDirectory = checkpointRoot
             options.recoverySuiteName = suiteName

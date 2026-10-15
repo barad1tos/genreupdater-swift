@@ -210,9 +210,9 @@ struct BatchRunAppTests {
 
     @Test("a free user sees one used track after a successful batch")
     func freeBatchConsumesAllowance() async throws {
-        let defaultsSuite = "BatchRunAppTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
-        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let subscription = SubscriptionService(
             counterStore: MemoryCounterStore(),
             userDefaults: defaults
@@ -267,9 +267,9 @@ struct BatchRunAppTests {
 
     @Test("a pro user keeps the free allowance after a successful batch")
     func proBatchKeepsAllowance() async throws {
-        let defaultsSuite = "BatchRunAppTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
-        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let defaults = temporaryDefaults.defaults
         let subscription = SubscriptionService(
             counterStore: MemoryCounterStore(),
             userDefaults: defaults
