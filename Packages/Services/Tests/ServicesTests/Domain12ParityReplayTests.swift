@@ -40,9 +40,11 @@ struct Domain12ParityReplayTests {
         )
         let sleeper = TestSleeper()
         var tierChangeCount = 0
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: date.now,
             entitlementSource: source,
             sleep: sleeper.sleep,

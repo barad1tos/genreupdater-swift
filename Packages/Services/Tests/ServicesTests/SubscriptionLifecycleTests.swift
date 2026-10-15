@@ -18,9 +18,11 @@ struct EntitlementLifecycleTests {
         )
         let sleeper = TestSleeper()
         var tierChangeCount = 0
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: date.now,
             entitlementSource: source,
             sleep: sleeper.sleep,
@@ -52,9 +54,11 @@ struct EntitlementLifecycleTests {
             )
         )
         var tierChangeCount = 0
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source,
             productLoader: { [] },
@@ -78,9 +82,11 @@ struct EntitlementLifecycleTests {
         let expiry = purchaseDate.addingTimeInterval(7 * 86400)
         let date = TestDate(expiry.addingTimeInterval(-1))
         let source = SequencedSource()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: date.now,
             entitlementSource: source
         )
@@ -104,9 +110,11 @@ struct EntitlementLifecycleTests {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let source = EntitlementStub(snapshot: StoreEntitlementSnapshot())
         let loader = ProductLoaderGate()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source,
             productLoader: loader.load
@@ -136,9 +144,11 @@ struct EntitlementLifecycleTests {
         let transactionID: UInt64 = 42
         let source = SequencedSource()
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -181,9 +191,11 @@ struct EntitlementLifecycleTests {
         let transactionID: UInt64 = 42
         let source = SequencedSource()
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -233,9 +245,11 @@ struct EntitlementLifecycleTests {
         let source = EntitlementStub(read: .verificationFailed(StoreEntitlementSnapshot()))
         let sleeper = TestSleeper()
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source,
             sleep: sleeper.sleep
@@ -287,9 +301,11 @@ struct EntitlementLifecycleTests {
         )
         let sleeper = TestSleeper()
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source,
             sleep: sleeper.sleep
@@ -336,9 +352,11 @@ struct EntitlementLifecycleTests {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let source = EntitlementStub(snapshot: StoreEntitlementSnapshot())
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -373,9 +391,11 @@ struct EntitlementLifecycleTests {
             )
         )
         let recorder = FinishRecorder()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -471,9 +491,11 @@ struct EntitlementLifecycleTests {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let transactionID: UInt64 = 42
         let source = EntitlementStub(snapshot: StoreEntitlementSnapshot())
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
@@ -514,9 +536,11 @@ struct EntitlementLifecycleTests {
             snapshot: StoreEntitlementSnapshot(weekPassPurchases: [now])
         )
         let sleeper = TestSleeper()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source,
             sleep: sleeper.sleep
@@ -539,9 +563,11 @@ struct EntitlementLifecycleTests {
     func rejectsStaleRefresh() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let source = SequencedSource()
-        let service = try SubscriptionService(
+        let temporaryDefaults = try TemporaryDefaults()
+        defer { temporaryDefaults.remove() }
+        let service = SubscriptionService(
             counterStore: CounterStub(),
-            userDefaults: #require(UserDefaults(suiteName: UUID().uuidString)),
+            userDefaults: temporaryDefaults.defaults,
             dateProvider: { now },
             entitlementSource: source
         )
